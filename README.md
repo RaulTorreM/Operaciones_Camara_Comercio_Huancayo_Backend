@@ -96,6 +96,18 @@ En Development, `appsettings.Development.json` deja `Inventario:AutoMigrate=true
 y `dailytasks`, siembra el administrador y los 11 usuarios de pendientes.
 La API queda en `http://localhost:5095`.
 
+Para controlar ambas migraciones con una sola opción en `.env`:
+
+```dotenv
+# true: aplica pendientes de Inventario y DailyTasks al iniciar.
+# false: no aplica ninguna (útil si ejecutas los scripts a mano).
+DB_APPLY_MIGRATIONS=true
+```
+
+Si `DB_APPLY_MIGRATIONS` no está definida, se respetan
+`Inventario__AutoMigrate` y `DailyTasks__AutoMigrate`. La opción maestra tiene prioridad
+sobre ambas.
+
 ## Base de datos
 
 - Base compartida: `cch_operaciones`.
@@ -115,7 +127,8 @@ psql "$env:DATABASE_URL" -f Inventario\migrations-inventory.sql
 psql "$env:DATABASE_URL" -f DailyTasks\migrations-dailytasks.sql
 ```
 
-3. Deja `Inventario__AutoMigrate=false` y `DailyTasks__AutoMigrate=false`.
+3. Deja `DB_APPLY_MIGRATIONS=false` (o, si no usas la opción maestra,
+   `Inventario__AutoMigrate=false` y `DailyTasks__AutoMigrate=false`).
 4. Define `ADMIN_USER`, `ADMIN_PASSWORD` y las credenciales de DailyTasks
    (`DAILYTASKS_SEED_PASSWORD` como respaldo o `DailyTasks__SeedUsers__N__Password` por usuario).
 5. Arranca el backend una vez para crear el administrador y los 11 usuarios de pendientes.

@@ -134,17 +134,26 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Opción maestra para las migraciones de ambos módulos. Si no está definida,
+// se respetan las opciones individuales de Inventario y DailyTasks.
+var masterAutoMigrate = app.Configuration.GetValue<bool?>("DB_APPLY_MIGRATIONS");
+var inventarioAutoMigrate = masterAutoMigrate
+    ?? app.Configuration.GetValue<bool>("Inventario:AutoMigrate");
+var dailyTasksAutoMigrate = masterAutoMigrate
+    ?? app.Configuration.GetValue<bool>("DailyTasks:AutoMigrate");
+
+app.Logger.LogInformation(
+    "Auto-migración al iniciar: Inventario={Inventario}, DailyTasks={DailyTasks} (DB_APPLY_MIGRATIONS={Master})",
+    inventarioAutoMigrate,
+    dailyTasksAutoMigrate,
+    masterAutoMigrate?.ToString() ?? "no definido");
+
 // Las herramientas de EF (dotnet ef) construyen la app sin arrancarla: no tocar la base.
-// En producción se recomienda AutoMigrate=false y aplicar migrations-inventory.sql a mano.
+// En producción se recomienda desactivar la auto-migración y aplicar los scripts a mano.
 if (!EF.IsDesignTime)
 {
-    await DatabaseInitializer.InitializeAsync(
-        app.Services,
-        app.Configuration.GetValue<bool>("Inventario:AutoMigrate"));
-
-    await DailyTaskDatabaseInitializer.InitializeAsync(
-        app.Services,
-        app.Configuration.GetValue<bool>("DailyTasks:AutoMigrate"));
+    await DatabaseInitializer.InitializeAsync(app.Services, inventarioAutoMigrate);
+    await DailyTaskDatabaseInitializer.InitializeAsync(app.Services, dailyTasksAutoMigrate);
 }
 
 app.UseForwardedHeaders();
