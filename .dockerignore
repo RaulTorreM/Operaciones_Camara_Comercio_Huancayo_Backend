@@ -1,0 +1,27 @@
+# Artefactos de compilación
+**/bin/
+**/obj/
+**/TestResults/
+**/*.user
+**/*.suo
+**/*.log
+
+# Configuración local y secretos
+.env
+.env.*
+!.env.example
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Herramientas y metadatos del repositorio
+.git/
+.gitignore
+.vs/
+.vscode/
+.idea/
+**/.DS_Store
+
+# Dependencias y carpetas que no van a la imagen
+**/node_modules/
+uploads/
+**/Inventario.Tests/

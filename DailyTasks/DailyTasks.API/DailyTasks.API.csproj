@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DailyTasks.Core\DailyTasks.Core.csproj" />
+    <ProjectReference Include="..\DailyTasks.Application\DailyTasks.Application.csproj" />
+    <ProjectReference Include="..\DailyTasks.Infrastructure\DailyTasks.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

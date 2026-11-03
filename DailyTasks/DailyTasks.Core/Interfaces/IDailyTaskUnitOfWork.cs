@@ -1,0 +1,9 @@
+namespace DailyTasks.Core.Interfaces;
+
+public interface IDailyTaskUnitOfWork
+{
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
+    Task BeginTransactionAsync(CancellationToken ct = default);
+    Task CommitAsync(CancellationToken ct = default);
+    Task RollbackAsync(CancellationToken ct = default);
+}
