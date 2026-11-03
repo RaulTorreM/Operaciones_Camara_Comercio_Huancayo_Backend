@@ -31,8 +31,8 @@ public static class DailyTaskAreas
         new(Logistica, "LOGÍSTICA"),
         new(CorteArbitraje, "CORTE DE ARBITRAJE"),
         new(Contabilidad, "CONTABILIDAD"),
-        new(Fidelizacion, "FIDELIZACIÓN 1"),
-        new(Cobranzas, "FIDELIZACIÓN 2"),
+        new(Fidelizacion, "FIDELIZACIÓN"),
+        new(Cobranzas, "COBRANZAS"),
         new(GerenciaGeneral, "GERENCIA GENERAL")
     ];
 
