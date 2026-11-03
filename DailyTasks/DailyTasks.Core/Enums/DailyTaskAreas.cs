@@ -17,8 +17,8 @@ public static class DailyTaskAreas
     public const string Logistica = "LOGISTICA";
     public const string CorteArbitraje = "CORTE_ARBITRAJE";
     public const string Contabilidad = "CONTABILIDAD";
-    public const string Fidelizacion1 = "FIDELIZACION_1";
-    public const string Fidelizacion2 = "FIDELIZACION_2";
+    public const string Fidelizacion = "FIDELIZACION";
+    public const string Cobranzas = "COBRANZAS";
     public const string GerenciaGeneral = "GERENCIA_GENERAL";
 
     public static IReadOnlyList<DailyTaskArea> All { get; } =
@@ -31,8 +31,8 @@ public static class DailyTaskAreas
         new(Logistica, "LOGÍSTICA"),
         new(CorteArbitraje, "CORTE DE ARBITRAJE"),
         new(Contabilidad, "CONTABILIDAD"),
-        new(Fidelizacion1, "FIDELIZACIÓN 1"),
-        new(Fidelizacion2, "FIDELIZACIÓN 2"),
+        new(Fidelizacion, "FIDELIZACIÓN 1"),
+        new(Cobranzas, "FIDELIZACIÓN 2"),
         new(GerenciaGeneral, "GERENCIA GENERAL")
     ];
 

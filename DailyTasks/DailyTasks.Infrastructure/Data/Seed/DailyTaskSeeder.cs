@@ -175,8 +175,8 @@ public static class DailyTaskSeeder
         new() { Username = "johonny", FullName = "Johonny", Area = DailyTaskAreas.Logistica, Role = DailyTaskRoles.User },
         new() { Username = "patricia", FullName = "Patricia", Area = DailyTaskAreas.CorteArbitraje, Role = DailyTaskRoles.User },
         new() { Username = "ginger", FullName = "Ginger", Area = DailyTaskAreas.Contabilidad, Role = DailyTaskRoles.User },
-        new() { Username = "carmen", FullName = "Carmen", Area = DailyTaskAreas.Fidelizacion1, Role = DailyTaskRoles.User },
-        new() { Username = "german", FullName = "German", Area = DailyTaskAreas.Fidelizacion2, Role = DailyTaskRoles.User },
+        new() { Username = "carmen", FullName = "Carmen", Area = DailyTaskAreas.Fidelizacion, Role = DailyTaskRoles.User },
+        new() { Username = "german", FullName = "German", Area = DailyTaskAreas.Cobranzas, Role = DailyTaskRoles.User },
         new() { Username = "klaus", FullName = "Klaus", Area = DailyTaskAreas.GerenciaGeneral, Role = DailyTaskRoles.Manager }
     ];
 }
