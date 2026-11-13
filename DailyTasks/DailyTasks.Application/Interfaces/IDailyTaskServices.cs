@@ -24,7 +24,11 @@ public interface IDailyTaskService
     Task<DailyTaskDto> RestoreAsync(int id);
     Task<List<DailyTaskHistoryDto>> HistoryAsync(int id);
     Task<DailyTaskBoardDto> BoardAsync(DailyTaskQuery query);
-    Task<DailyTaskCalendarDto> CalendarAsync(DateOnly? from, DateOnly? to, DailyTaskQuery query);
+    Task<DailyTaskCalendarDto> CalendarAsync(
+        DateOnly? from,
+        DateOnly? to,
+        string? groupBy,
+        DailyTaskQuery query);
     Task<DailyTaskChangesDto> ChangesAsync(DateTime? sinceUtc);
     Task<List<DailyTaskUserDto>> ListUsersAsync(string? area);
     Task<List<DailyTaskAreaDto>> ListAreasAsync();

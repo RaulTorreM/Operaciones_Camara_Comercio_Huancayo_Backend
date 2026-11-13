@@ -27,8 +27,9 @@ public class DailyTasksController(IDailyTaskService service) : ControllerBase
     public async Task<ActionResult<DailyTaskCalendarDto>> Calendar(
         [FromQuery] DateOnly? from,
         [FromQuery] DateOnly? to,
+        [FromQuery] string? groupBy,
         [FromQuery] DailyTaskQuery query) =>
-        Ok(await service.CalendarAsync(from, to, query));
+        Ok(await service.CalendarAsync(from, to, groupBy, query));
 
     [HttpGet("settings")]
     public async Task<ActionResult<DailyTaskSettingsDto>> GetSettings() =>

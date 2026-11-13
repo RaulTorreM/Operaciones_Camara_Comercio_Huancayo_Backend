@@ -366,7 +366,11 @@ public class DailyTaskService(
             doneCards);
     }
 
-    public async Task<DailyTaskCalendarDto> CalendarAsync(DateOnly? from, DateOnly? to, DailyTaskQuery query)
+    public async Task<DailyTaskCalendarDto> CalendarAsync(
+        DateOnly? from,
+        DateOnly? to,
+        string? groupBy,
+        DailyTaskQuery query)
     {
         EnsureAuthenticated();
 
@@ -384,14 +388,30 @@ public class DailyTaskService(
         if (end.DayNumber - start.DayNumber > 366)
             throw new BusinessRuleException("El rango del calendario no puede superar un año.");
 
+        // Por defecto se agrupa por vencimiento; "createdOn" muestra la fecha de creación.
+        var byCreatedOn = string.Equals(groupBy, "createdOn", StringComparison.OrdinalIgnoreCase);
+
         var filter = query.ToFilter();
-        filter.DueFrom = start;
-        filter.DueTo = end;
+        if (byCreatedOn)
+        {
+            filter.CreatedFrom = start;
+            filter.CreatedTo = end;
+            filter.DueFrom = null;
+            filter.DueTo = null;
+        }
+        else
+        {
+            filter.DueFrom = start;
+            filter.DueTo = end;
+            filter.CreatedFrom = null;
+            filter.CreatedTo = null;
+        }
+
         if (!current.IsManager || !query.TeamView) filter.AssignedToId = current.Id;
 
         var items = await tasks.ListAllAsync(filter);
         var days = items
-            .GroupBy(t => t.DueDate)
+            .GroupBy(t => byCreatedOn ? t.CreatedOn : t.DueDate)
             .OrderBy(g => g.Key)
             .Select(g => new DailyTaskCalendarDayDto(
                 g.Key,

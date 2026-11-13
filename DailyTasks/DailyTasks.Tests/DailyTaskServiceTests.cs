@@ -670,4 +670,68 @@ public class DailyTaskServiceTests
         Assert.Null(doneFilter.CompletedTo);
         Assert.Equal(DailyTaskStatus.Done, doneFilter.Status);
     }
+
+    [Fact]
+    public async Task CalendarAsync_Default_GroupsByDueDate()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var due = DailyTaskTime.Today.AddDays(2);
+        var created = DailyTaskTime.Today.AddDays(-3);
+        var task = TestData.Task(7, dueDate: due, createdOn: created);
+
+        DailyTaskFilter? filter = null;
+        _tasks.Setup(r => r.ListAllAsync(It.IsAny<DailyTaskFilter>(), It.IsAny<bool>()))
+            .Returns((DailyTaskFilter f, bool _) =>
+            {
+                filter = f;
+                return Task.FromResult(new List<DailyTask> { task });
+            });
+
+        var service = Build(current);
+        var from = DailyTaskTime.Today.AddDays(-10);
+        var to = DailyTaskTime.Today.AddDays(10);
+
+        var result = await service.CalendarAsync(from, to, null, new DailyTaskQuery());
+
+        Assert.NotNull(filter);
+        Assert.Equal(from, filter!.DueFrom);
+        Assert.Equal(to, filter.DueTo);
+        Assert.Null(filter.CreatedFrom);
+        Assert.Null(filter.CreatedTo);
+        Assert.Single(result.Days);
+        Assert.Equal(due, result.Days[0].Date);
+        Assert.Equal(7, result.Days[0].Tasks[0].Id);
+    }
+
+    [Fact]
+    public async Task CalendarAsync_CreatedOn_GroupsByCreationDate()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var due = DailyTaskTime.Today.AddDays(8);
+        var created = DailyTaskTime.Today.AddDays(-5);
+        var task = TestData.Task(8, dueDate: due, createdOn: created);
+
+        DailyTaskFilter? filter = null;
+        _tasks.Setup(r => r.ListAllAsync(It.IsAny<DailyTaskFilter>(), It.IsAny<bool>()))
+            .Returns((DailyTaskFilter f, bool _) =>
+            {
+                filter = f;
+                return Task.FromResult(new List<DailyTask> { task });
+            });
+
+        var service = Build(current);
+        var from = DailyTaskTime.Today.AddDays(-10);
+        var to = DailyTaskTime.Today.AddDays(10);
+
+        var result = await service.CalendarAsync(from, to, "createdOn", new DailyTaskQuery());
+
+        Assert.NotNull(filter);
+        Assert.Equal(from, filter!.CreatedFrom);
+        Assert.Equal(to, filter.CreatedTo);
+        Assert.Null(filter.DueFrom);
+        Assert.Null(filter.DueTo);
+        Assert.Single(result.Days);
+        Assert.Equal(created, result.Days[0].Date);
+        Assert.Equal(8, result.Days[0].Tasks[0].Id);
+    }
 }
