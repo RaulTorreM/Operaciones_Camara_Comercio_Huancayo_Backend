@@ -82,7 +82,7 @@ public class DailyTaskService(
         if (assignee is null || !assignee.IsActive)
             throw new BusinessRuleException("El responsable indicado no existe o está inactivo.");
 
-        await EnsureUserCanCreatePendingAsync();
+        await EnsureUserCanCreateInWindowAsync();
 
         var now = DailyTaskTime.UtcNow;
         var today = DailyTaskTime.Today;
@@ -445,9 +445,10 @@ public class DailyTaskService(
     {
         EnsureAuthenticated();
         var currentSettings = await settings.GetAsync();
-        var limit = currentSettings?.UserDueDateWindowDays ?? 7;
+        var days = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 365);
         return new DailyTaskSettingsDto(
-            Math.Clamp(limit, 0, 999),
+            days,
+            currentSettings?.CreationWindowEndsOn,
             currentSettings?.UpdatedAt ?? DailyTaskTime.UtcNow);
     }
 
@@ -456,21 +457,23 @@ public class DailyTaskService(
         EnsureAuthenticated();
 
         if (!current.IsManager)
-            throw new ForbiddenException("Solo Gerencia General puede configurar el límite de pendientes.");
+            throw new ForbiddenException("Solo Gerencia General puede configurar la ventana de creación.");
 
-        if (request.UserPendingLimit is null)
-            throw new BusinessRuleException("Indica la cantidad de pendientes permitidos.");
+        if (request.CreationWindowDays is null)
+            throw new BusinessRuleException("Indica la cantidad de días de la ventana de creación.");
 
-        var limit = request.UserPendingLimit.Value;
-        if (limit is < 0 or > 999)
-            throw new BusinessRuleException("El límite de pendientes debe estar entre 0 y 999.");
+        var days = request.CreationWindowDays.Value;
+        if (days is < 0 or > 365)
+            throw new BusinessRuleException("La ventana de creación debe estar entre 0 y 365 días.");
 
+        var today = DailyTaskTime.Today;
         var currentSettings = await settings.GetAsync() ?? new DailyTaskSettings();
-        currentSettings.UserDueDateWindowDays = limit;
+        currentSettings.UserDueDateWindowDays = days;
+        currentSettings.CreationWindowEndsOn = today.AddDays(days);
         currentSettings.UpdatedAt = DailyTaskTime.UtcNow;
         await settings.SaveAsync(currentSettings);
 
-        return new DailyTaskSettingsDto(limit, currentSettings.UpdatedAt);
+        return new DailyTaskSettingsDto(days, currentSettings.CreationWindowEndsOn, currentSettings.UpdatedAt);
     }
 
     public async Task<List<DailyTaskNotificationDto>> ListNotificationsAsync()
@@ -507,20 +510,20 @@ public class DailyTaskService(
         await notifications.MarkAllReadAsync(current.Id);
     }
 
-    private async Task EnsureUserCanCreatePendingAsync()
+    private async Task EnsureUserCanCreateInWindowAsync()
     {
         if (current.IsManager) return;
 
         var currentSettings = await settings.GetAsync();
-        var limit = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 999);
-        var active = await tasks.CountActiveByAssigneeAsync(current.Id);
+        var endsOn = currentSettings?.CreationWindowEndsOn;
+        if (endsOn is null) return;
 
-        if (active >= limit)
-        {
-            throw new BusinessRuleException(
-                $"Has alcanzado el límite de {limit} pendientes activos. " +
-                "Completa o elimina uno antes de crear otro.");
-        }
+        var today = DailyTaskTime.Today;
+        if (today <= endsOn.Value) return;
+
+        throw new BusinessRuleException(
+            $"La ventana de creación terminó el {endsOn.Value:dd/MM/yyyy}. " +
+            "Pide a Gerencia General que habilite un nuevo periodo para crear pendientes.");
     }
 
     private int ResolveAssignee(int? requested)

@@ -45,9 +45,12 @@ public record ChangeDailyTaskStatusRequest(DailyTaskStatus? Status);
 
 public record AssignDailyTaskRequest(int? AssignedToId);
 
-public record DailyTaskSettingsDto(int UserPendingLimit, DateTime UpdatedAt);
+public record DailyTaskSettingsDto(
+    int CreationWindowDays,
+    DateOnly? CreationWindowEndsOn,
+    DateTime UpdatedAt);
 
-public record UpdateDailyTaskSettingsRequest(int? UserPendingLimit);
+public record UpdateDailyTaskSettingsRequest(int? CreationWindowDays);
 
 public record DailyTaskNotificationDto(
     int Id,

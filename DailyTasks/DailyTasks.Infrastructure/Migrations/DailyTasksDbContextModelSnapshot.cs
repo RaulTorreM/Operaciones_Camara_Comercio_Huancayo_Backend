@@ -203,6 +203,9 @@ namespace DailyTasks.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateOnly?>("CreationWindowEndsOn")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 

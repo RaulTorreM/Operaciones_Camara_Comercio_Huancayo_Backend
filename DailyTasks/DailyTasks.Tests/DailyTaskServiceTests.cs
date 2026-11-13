@@ -27,7 +27,6 @@ public class DailyTaskServiceTests
         _notifier.Setup(n => n.NotifyAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>())).Returns(Task.CompletedTask);
-        _tasks.Setup(r => r.CountActiveByAssigneeAsync(It.IsAny<int>())).ReturnsAsync(0);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync((DailyTaskSettings?)null);
         _notifications.Setup(r => r.AddAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
         _notifications.Setup(r => r.MarkReadAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
@@ -74,13 +73,15 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_RegularUser_AtPendingLimit_Throws()
+    public async Task CreateAsync_RegularUser_OutsideCreationWindow_Throws()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var user = TestData.User(1);
         _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
-        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 2 });
-        _tasks.Setup(r => r.CountActiveByAssigneeAsync(1)).ReturnsAsync(2);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
+        {
+            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(-1)
+        });
 
         var service = Build(current);
 
@@ -94,7 +95,36 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_Manager_IgnoresPendingLimit()
+    public async Task CreateAsync_RegularUser_InsideCreationWindow_AllowsAnyDueDate()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var user = TestData.User(1);
+        _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
+        {
+            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(2)
+        });
+
+        DailyTask? captured = null;
+        _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>()))
+            .Callback<DailyTask>(t => captured = t)
+            .Returns(Task.CompletedTask);
+
+        var service = Build(current);
+
+        await service.CreateAsync(new CreateDailyTaskRequest(
+            "Tarea",
+            null,
+            null,
+            DailyTaskTime.Today.AddDays(120),
+            null));
+
+        Assert.NotNull(captured);
+        Assert.Equal(DailyTaskTime.Today.AddDays(120), captured!.DueDate);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Manager_IgnoresCreationWindow()
     {
         var current = new FakeCurrentUser
         {
@@ -104,8 +134,10 @@ public class DailyTaskServiceTests
         };
         var manager = TestData.User(11, role: DailyTaskRoles.Manager, area: DailyTaskAreas.GerenciaGeneral);
         _users.Setup(r => r.GetByIdAsync(11)).ReturnsAsync(manager);
-        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 0 });
-        _tasks.Setup(r => r.CountActiveByAssigneeAsync(11)).ReturnsAsync(999);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
+        {
+            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(-30)
+        });
 
         DailyTask? captured = null;
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>()))
@@ -126,7 +158,7 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task UpdateSettingsAsync_Manager_UpdatesPendingLimit()
+    public async Task UpdateSettingsAsync_Manager_UpdatesCreationWindow()
     {
         var current = new FakeCurrentUser
         {
@@ -143,9 +175,11 @@ public class DailyTaskServiceTests
 
         var result = await service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2));
 
-        Assert.Equal(2, result.UserPendingLimit);
+        Assert.Equal(2, result.CreationWindowDays);
+        Assert.Equal(DailyTaskTime.Today.AddDays(2), result.CreationWindowEndsOn);
         Assert.NotNull(saved);
         Assert.Equal(2, saved!.UserDueDateWindowDays);
+        Assert.Equal(DailyTaskTime.Today.AddDays(2), saved.CreationWindowEndsOn);
     }
 
     [Fact]

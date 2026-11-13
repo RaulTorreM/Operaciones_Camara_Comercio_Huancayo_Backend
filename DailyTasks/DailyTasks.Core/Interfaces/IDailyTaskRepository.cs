@@ -16,8 +16,6 @@ public interface IDailyTaskRepository
 
     Task<int> CountAsync(Models.DailyTaskFilter filter, bool includeDeleted);
 
-    Task<int> CountActiveByAssigneeAsync(int assignedToId);
-
     Task<List<DailyTask>> ListAllAsync(Models.DailyTaskFilter filter, bool includeDeleted = false);
 
     Task<List<DailyTask>> ListChangedSinceAsync(DateTime since, int limit = 500);
