@@ -158,6 +158,27 @@ namespace DailyTasks.Infrastructure.Migrations
                     b.ToTable("TaskHistory", "dailytasks");
                 });
 
+            modelBuilder.Entity("DailyTasks.Core.Entities.DailyTaskSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserDueDateWindowDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(7);
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Settings", "dailytasks");
+                });
+
             modelBuilder.Entity("DailyTasks.Core.Entities.DailyTaskUser", b =>
                 {
                     b.Property<int>("Id")

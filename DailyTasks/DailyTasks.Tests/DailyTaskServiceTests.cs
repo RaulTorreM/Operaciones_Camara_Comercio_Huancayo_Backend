@@ -16,6 +16,7 @@ public class DailyTaskServiceTests
     private readonly Mock<IDailyTaskRepository> _tasks = new();
     private readonly Mock<IDailyTaskUserRepository> _users = new();
     private readonly Mock<IDailyTaskHistoryRepository> _history = new();
+    private readonly Mock<IDailyTaskSettingsRepository> _settings = new();
     private readonly Mock<IDailyTaskUnitOfWork> _uow = new();
     private readonly Mock<IDailyTaskNotifier> _notifier = new();
 
@@ -25,10 +26,11 @@ public class DailyTaskServiceTests
         _notifier.Setup(n => n.NotifyAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>())).Returns(Task.CompletedTask);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync((DailyTaskSettings?)null);
     }
 
     private DailyTaskService Build(FakeCurrentUser current) =>
-        new(_tasks.Object, _users.Object, _history.Object, _uow.Object, current, _notifier.Object);
+        new(_tasks.Object, _users.Object, _history.Object, _settings.Object, _uow.Object, current, _notifier.Object);
 
     [Fact]
     public async Task CreateAsync_RegularUser_ForcesSelfAndDefaults()
@@ -56,6 +58,89 @@ public class DailyTaskServiceTests
         Assert.Equal("CREATED", captured.History[0].Action);
         Assert.Equal("DT-10", dto.Code);
         _notifier.Verify(n => n.NotifyAsync("taskCreated", It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_RegularUser_OutsideDueWindow_Throws()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var user = TestData.User(1);
+        _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 2 });
+
+        var service = Build(current);
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateDailyTaskRequest(
+                "Tarea",
+                null,
+                null,
+                DailyTaskTime.Today.AddDays(3),
+                null)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_Manager_IgnoresDueWindow()
+    {
+        var current = new FakeCurrentUser
+        {
+            Id = 11,
+            Role = DailyTaskRoles.Manager,
+            Area = DailyTaskAreas.GerenciaGeneral
+        };
+        var manager = TestData.User(11, role: DailyTaskRoles.Manager, area: DailyTaskAreas.GerenciaGeneral);
+        _users.Setup(r => r.GetByIdAsync(11)).ReturnsAsync(manager);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 2 });
+
+        DailyTask? captured = null;
+        _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>()))
+            .Callback<DailyTask>(t => captured = t)
+            .Returns(Task.CompletedTask);
+
+        var service = Build(current);
+
+        await service.CreateAsync(new CreateDailyTaskRequest(
+            "Tarea futura",
+            null,
+            null,
+            DailyTaskTime.Today.AddDays(30),
+            11));
+
+        Assert.NotNull(captured);
+        Assert.Equal(DailyTaskTime.Today.AddDays(30), captured!.DueDate);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_Manager_UpdatesWindow()
+    {
+        var current = new FakeCurrentUser
+        {
+            Id = 11,
+            Role = DailyTaskRoles.Manager,
+            Area = DailyTaskAreas.GerenciaGeneral
+        };
+        DailyTaskSettings? saved = null;
+        _settings.Setup(s => s.SaveAsync(It.IsAny<DailyTaskSettings>()))
+            .Callback<DailyTaskSettings>(s => saved = s)
+            .Returns(Task.CompletedTask);
+
+        var service = Build(current);
+
+        var result = await service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2));
+
+        Assert.Equal(2, result.UserDueDateWindowDays);
+        Assert.NotNull(saved);
+        Assert.Equal(2, saved!.UserDueDateWindowDays);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_RegularUser_Forbidden()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var service = Build(current);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2)));
     }
 
     [Fact]
@@ -241,6 +326,94 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
+    public async Task ListAsync_RegularUser_ForcesOwnAssignee()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        DailyTaskFilter? captured = null;
+
+        _tasks.Setup(r => r.CountAsync(It.IsAny<DailyTaskFilter>(), false)).ReturnsAsync(1);
+        _tasks.Setup(r => r.ListAsync(
+                It.IsAny<DailyTaskFilter>(),
+                false,
+                It.IsAny<string?>(),
+                false,
+                It.IsAny<int>(),
+                It.IsAny<int>()))
+            .Callback<DailyTaskFilter, bool, string?, bool, int, int>(
+                (filter, _, _, _, _, _) => captured = filter)
+            .ReturnsAsync(new List<DailyTask>());
+
+        var service = Build(current);
+
+        await service.ListAsync(new DailyTaskQuery { AssignedToId = 2, Page = 1, PageSize = 20 });
+
+        Assert.NotNull(captured);
+        Assert.Equal(1, captured!.AssignedToId);
+    }
+
+    [Fact]
+    public async Task ListAsync_Manager_DefaultsToOwnTasks()
+    {
+        var current = new FakeCurrentUser
+        {
+            Id = 11,
+            Role = DailyTaskRoles.Manager,
+            Area = DailyTaskAreas.GerenciaGeneral
+        };
+        DailyTaskFilter? captured = null;
+
+        _tasks.Setup(r => r.CountAsync(It.IsAny<DailyTaskFilter>(), false)).ReturnsAsync(1);
+        _tasks.Setup(r => r.ListAsync(
+                It.IsAny<DailyTaskFilter>(),
+                false,
+                It.IsAny<string?>(),
+                false,
+                It.IsAny<int>(),
+                It.IsAny<int>()))
+            .Callback<DailyTaskFilter, bool, string?, bool, int, int>(
+                (filter, _, _, _, _, _) => captured = filter)
+            .ReturnsAsync(new List<DailyTask>());
+
+        var service = Build(current);
+
+        await service.ListAsync(new DailyTaskQuery { Page = 1, PageSize = 20 });
+
+        Assert.NotNull(captured);
+        Assert.Equal(11, captured!.AssignedToId);
+    }
+
+    [Fact]
+    public async Task ListAsync_Manager_TeamView_ShowsTeam()
+    {
+        var current = new FakeCurrentUser
+        {
+            Id = 11,
+            Role = DailyTaskRoles.Manager,
+            Area = DailyTaskAreas.GerenciaGeneral
+        };
+        DailyTaskFilter? captured = null;
+
+        _tasks.Setup(r => r.CountAsync(It.IsAny<DailyTaskFilter>(), false)).ReturnsAsync(1);
+        _tasks.Setup(r => r.ListAsync(
+                It.IsAny<DailyTaskFilter>(),
+                false,
+                It.IsAny<string?>(),
+                false,
+                It.IsAny<int>(),
+                It.IsAny<int>()))
+            .Callback<DailyTaskFilter, bool, string?, bool, int, int>(
+                (filter, _, _, _, _, _) => captured = filter)
+            .ReturnsAsync(new List<DailyTask>());
+
+        var service = Build(current);
+
+        await service.ListAsync(new DailyTaskQuery { Page = 1, PageSize = 20, TeamView = true });
+
+        Assert.NotNull(captured);
+        Assert.Null(captured!.AssignedToId);
+    }
+
+    [Fact]
     public async Task GetAsync_DeletedTask_RegularUser_NotFound()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
@@ -309,14 +482,13 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task BoardAsync_Done_OnlyIncludesTasksCompletedOnBoardDate()
+    public async Task BoardAsync_Done_FiltersByCompletionRange()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var today = DailyTaskTime.Today;
-        var yesterday = today.AddDays(-1);
+        var from = today.AddDays(-10);
         var pending = TestData.Task(1, status: DailyTaskStatus.Pending, dueDate: today);
-        var doneYesterday = TestData.Task(2, status: DailyTaskStatus.Done, dueDate: today, completedOn: yesterday);
-        var doneToday = TestData.Task(3, status: DailyTaskStatus.Done, dueDate: today.AddDays(3), completedOn: today);
+        var done = TestData.Task(3, status: DailyTaskStatus.Done, dueDate: today, completedOn: today.AddDays(-2));
 
         DailyTaskFilter? activeFilter = null;
         DailyTaskFilter? doneFilter = null;
@@ -328,32 +500,42 @@ public class DailyTaskServiceTests
                 if (calls++ == 0)
                 {
                     activeFilter = filter;
-                    return Task.FromResult(new List<DailyTask> { pending, doneYesterday, doneToday });
+                    return Task.FromResult(new List<DailyTask> { pending, done });
                 }
 
                 doneFilter = filter;
-                return Task.FromResult(new List<DailyTask> { doneToday });
+                return Task.FromResult(new List<DailyTask> { done });
             });
 
         var service = Build(current);
 
-        var board = await service.BoardAsync(new DailyTaskQuery { DueTo = today, DueFrom = today.AddDays(-10) });
+        var board = await service.BoardAsync(new DailyTaskQuery
+        {
+            DueFrom = from,
+            DueTo = today,
+            Overdue = false
+        });
 
         Assert.Single(board.Pending);
         Assert.Empty(board.InProgress);
         Assert.Single(board.Done);
         Assert.Equal(3, board.Done[0].Id);
         Assert.NotNull(activeFilter);
-        Assert.Equal(today, activeFilter!.DueTo);
+        Assert.Equal(from, activeFilter!.DueFrom);
+        Assert.False(activeFilter.Overdue);
         Assert.NotNull(doneFilter);
-        Assert.Equal(today, doneFilter!.CompletedOn);
+        Assert.Equal(from, doneFilter!.CompletedFrom);
+        Assert.Equal(today, doneFilter.CompletedTo);
+        Assert.Null(doneFilter.CompletedOn);
         Assert.Equal(DailyTaskStatus.Done, doneFilter.Status);
+        Assert.Null(doneFilter.Overdue);
+        Assert.Null(doneFilter.DueFrom);
         Assert.Null(doneFilter.DueTo);
         Assert.Null(doneFilter.DueDate);
     }
 
     [Fact]
-    public async Task BoardAsync_DueDate_UsesSelectedDayForCompleted()
+    public async Task BoardAsync_DueDate_FiltersCompletedOnSelectedDay()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var selected = DailyTaskTime.Today.AddDays(-2);
@@ -379,7 +561,37 @@ public class DailyTaskServiceTests
         Assert.Empty(board.InProgress);
         Assert.Single(board.Done);
         Assert.NotNull(doneFilter);
-        Assert.Equal(selected, doneFilter!.CompletedOn);
+        Assert.Equal(selected, doneFilter!.CompletedFrom);
+        Assert.Equal(selected, doneFilter.CompletedTo);
         Assert.Null(doneFilter.DueDate);
+    }
+
+    [Fact]
+    public async Task BoardAsync_NoDateFilter_ShowsAllCompleted()
+    {
+        var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
+        var done = TestData.Task(5, status: DailyTaskStatus.Done, completedOn: DailyTaskTime.Today.AddDays(-20));
+
+        DailyTaskFilter? doneFilter = null;
+        var calls = 0;
+
+        _tasks.Setup(r => r.ListAllAsync(It.IsAny<DailyTaskFilter>(), It.IsAny<bool>()))
+            .Returns((DailyTaskFilter filter, bool _) =>
+            {
+                if (calls++ == 0) return Task.FromResult(new List<DailyTask>());
+
+                doneFilter = filter;
+                return Task.FromResult(new List<DailyTask> { done });
+            });
+
+        var service = Build(current);
+
+        var board = await service.BoardAsync(new DailyTaskQuery());
+
+        Assert.Single(board.Done);
+        Assert.NotNull(doneFilter);
+        Assert.Null(doneFilter!.CompletedFrom);
+        Assert.Null(doneFilter.CompletedTo);
+        Assert.Equal(DailyTaskStatus.Done, doneFilter.Status);
     }
 }

@@ -14,6 +14,7 @@ public class DailyTaskService(
     IDailyTaskRepository tasks,
     IDailyTaskUserRepository users,
     IDailyTaskHistoryRepository history,
+    IDailyTaskSettingsRepository settings,
     IDailyTaskUnitOfWork uow,
     IDailyTaskCurrentUser current,
     IDailyTaskNotifier notifier) : IDailyTaskService
@@ -29,6 +30,7 @@ public class DailyTaskService(
             throw new ForbiddenException("Solo Gerencia General puede ver pendientes eliminados.");
 
         var filter = query.ToFilter();
+        if (!current.IsManager || !query.TeamView) filter.AssignedToId = current.Id;
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize <= 0 ? 20 : query.PageSize, 1, 100);
         var descending = string.Equals(query.SortDir, "desc", StringComparison.OrdinalIgnoreCase);
@@ -51,6 +53,9 @@ public class DailyTaskService(
 
         var task = await tasks.GetByIdAsync(id, includeDeleted: current.IsManager)
             ?? throw new NotFoundException("No se encontró el pendiente.");
+
+        if (!current.IsManager && task.AssignedToId != current.Id)
+            throw new NotFoundException("No se encontró el pendiente.");
 
         return task.ToDto();
     }
@@ -78,6 +83,8 @@ public class DailyTaskService(
 
         var now = DailyTaskTime.UtcNow;
         var today = DailyTaskTime.Today;
+        var dueDate = request.DueDate ?? today;
+        await EnsureUserDueDateAllowedAsync(dueDate);
 
         var task = new DailyTask
         {
@@ -92,7 +99,7 @@ public class DailyTaskService(
             AssignedTo = assignee,
             CreatedAt = now,
             CreatedOn = today,
-            DueDate = request.DueDate ?? today,
+            DueDate = dueDate,
             UpdatedAt = now
         };
 
@@ -120,6 +127,8 @@ public class DailyTaskService(
 
         var priority = request.Priority ?? task.Priority;
         var dueDate = request.DueDate ?? task.DueDate;
+        if (request.DueDate.HasValue && request.DueDate.Value != task.DueDate)
+            await EnsureUserDueDateAllowedAsync(dueDate);
         var now = DailyTaskTime.UtcNow;
         var group = Guid.NewGuid();
         var changes = new List<DailyTaskHistory>();
@@ -298,25 +307,30 @@ public class DailyTaskService(
         if (query.IncludeDeleted && !current.IsManager)
             throw new ForbiddenException("Solo Gerencia General puede ver pendientes eliminados.");
 
-        var items = await tasks.ListAllAsync(query.ToFilter());
+        var activeFilter = query.ToFilter();
+        if (!current.IsManager || !query.TeamView) activeFilter.AssignedToId = current.Id;
+
+        var items = await tasks.ListAllAsync(activeFilter);
         var activeCards = items
             .Where(t => t.Status != DailyTaskStatus.Done)
             .Select(t => t.ToCard())
             .ToList();
 
-        // La columna Completado representa el cierre del día del tablero,
-        // no el historial de cierres de días anteriores.
-        var boardDate = query.DueDate ?? DailyTaskTime.Today;
+        // Los completados se filtran por fecha de cierre usando el mismo rango
+        // de fechas del tablero. Sin rango, se muestran todos los cierres.
         var doneCards = new List<DailyTaskCardDto>();
 
-        if (query.Overdue != true && (query.Status is null || query.Status == DailyTaskStatus.Done))
+        if (query.Status is null || query.Status == DailyTaskStatus.Done)
         {
             var doneFilter = query.ToFilter();
             doneFilter.Status = DailyTaskStatus.Done;
-            doneFilter.CompletedOn = boardDate;
             doneFilter.DueFrom = null;
             doneFilter.DueTo = null;
             doneFilter.DueDate = null;
+            doneFilter.Overdue = null;
+            doneFilter.CompletedFrom = query.CompletedFrom ?? query.DueDate ?? query.DueFrom;
+            doneFilter.CompletedTo = query.CompletedTo ?? query.DueDate ?? query.DueTo;
+            if (!current.IsManager || !query.TeamView) doneFilter.AssignedToId = current.Id;
 
             var doneItems = await tasks.ListAllAsync(doneFilter);
             doneCards = doneItems.Select(t => t.ToCard()).ToList();
@@ -349,6 +363,7 @@ public class DailyTaskService(
         var filter = query.ToFilter();
         filter.DueFrom = start;
         filter.DueTo = end;
+        if (!current.IsManager || !query.TeamView) filter.AssignedToId = current.Id;
 
         var items = await tasks.ListAllAsync(filter);
         var days = items
@@ -374,7 +389,7 @@ public class DailyTaskService(
         // pero no el detalle de pendientes que solo Gerencia puede supervisar.
         var visible = current.IsManager
             ? changed
-            : changed.Where(t => t.DeletedAt == null).ToList();
+            : changed.Where(t => t.DeletedAt == null && t.AssignedToId == current.Id).ToList();
 
         return new DailyTaskChangesDto(
             visible.Select(t => t.ToDto()).ToList(),
@@ -400,6 +415,55 @@ public class DailyTaskService(
         return Task.FromResult(DailyTaskAreas.All
             .Select(a => new DailyTaskAreaDto(a.Code, a.Name))
             .ToList());
+    }
+
+    public async Task<DailyTaskSettingsDto> GetSettingsAsync()
+    {
+        EnsureAuthenticated();
+        var currentSettings = await settings.GetAsync();
+        var window = currentSettings?.UserDueDateWindowDays ?? 7;
+        return new DailyTaskSettingsDto(
+            Math.Clamp(window, 0, 365),
+            currentSettings?.UpdatedAt ?? DailyTaskTime.UtcNow);
+    }
+
+    public async Task<DailyTaskSettingsDto> UpdateSettingsAsync(UpdateDailyTaskSettingsRequest request)
+    {
+        EnsureAuthenticated();
+
+        if (!current.IsManager)
+            throw new ForbiddenException("Solo Gerencia General puede configurar el límite de días.");
+
+        if (request.UserDueDateWindowDays is null)
+            throw new BusinessRuleException("Indica la cantidad de días permitidos.");
+
+        var days = request.UserDueDateWindowDays.Value;
+        if (days is < 0 or > 365)
+            throw new BusinessRuleException("El límite de días debe estar entre 0 y 365.");
+
+        var currentSettings = await settings.GetAsync() ?? new DailyTaskSettings();
+        currentSettings.UserDueDateWindowDays = days;
+        currentSettings.UpdatedAt = DailyTaskTime.UtcNow;
+        await settings.SaveAsync(currentSettings);
+
+        return new DailyTaskSettingsDto(days, currentSettings.UpdatedAt);
+    }
+
+    private async Task EnsureUserDueDateAllowedAsync(DateOnly dueDate)
+    {
+        if (current.IsManager) return;
+
+        var currentSettings = await settings.GetAsync();
+        var days = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 365);
+        var today = DailyTaskTime.Today;
+        var maxDate = today.AddDays(days);
+
+        if (dueDate < today || dueDate > maxDate)
+        {
+            throw new BusinessRuleException(
+                $"Tu vencimiento debe estar entre hoy y el {maxDate:dd/MM/yyyy} ({days} días). " +
+                "Pide a Gerencia General que amplíe el límite si necesitas otra fecha.");
+        }
     }
 
     private int ResolveAssignee(int? requested)

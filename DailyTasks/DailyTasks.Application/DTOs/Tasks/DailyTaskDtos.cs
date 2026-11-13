@@ -13,8 +13,12 @@ public sealed class DailyTaskQuery
     public DateOnly? DueFrom { get; set; }
     public DateOnly? DueTo { get; set; }
     public DateOnly? DueDate { get; set; }
+    public DateOnly? CompletedFrom { get; set; }
+    public DateOnly? CompletedTo { get; set; }
     public DateOnly? CompletedOn { get; set; }
     public bool? Overdue { get; set; }
+    /// <summary>Solo Gerencia General: true muestra las tareas de todo el equipo.</summary>
+    public bool TeamView { get; set; }
     public string? Q { get; set; }
     public DateTime? UpdatedSince { get; set; }
     public int Page { get; set; } = 1;
@@ -40,6 +44,10 @@ public record UpdateDailyTaskRequest(
 public record ChangeDailyTaskStatusRequest(DailyTaskStatus? Status);
 
 public record AssignDailyTaskRequest(int? AssignedToId);
+
+public record DailyTaskSettingsDto(int UserDueDateWindowDays, DateTime UpdatedAt);
+
+public record UpdateDailyTaskSettingsRequest(int? UserDueDateWindowDays);
 
 public record DailyTaskDto(
     int Id,

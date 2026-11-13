@@ -14,6 +14,8 @@ public sealed class DailyTaskFilter
     public DateOnly? DueFrom { get; set; }
     public DateOnly? DueTo { get; set; }
     public DateOnly? DueDate { get; set; }
+    public DateOnly? CompletedFrom { get; set; }
+    public DateOnly? CompletedTo { get; set; }
     public DateOnly? CompletedOn { get; set; }
     public bool? Overdue { get; set; }
     public string? Query { get; set; }

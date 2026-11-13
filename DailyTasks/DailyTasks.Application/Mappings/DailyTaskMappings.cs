@@ -114,6 +114,8 @@ public static class DailyTaskMappings
         DueFrom = query.DueFrom,
         DueTo = query.DueTo,
         DueDate = query.DueDate,
+        CompletedFrom = query.CompletedFrom,
+        CompletedTo = query.CompletedTo,
         CompletedOn = query.CompletedOn,
         Overdue = query.Overdue,
         Query = string.IsNullOrWhiteSpace(query.Q) ? null : query.Q.Trim(),

@@ -74,6 +74,8 @@ public class DailyTaskRepository(DailyTasksDbContext db) : IDailyTaskRepository
         if (f.DueFrom.HasValue) q = q.Where(t => t.DueDate >= f.DueFrom.Value);
         if (f.DueTo.HasValue) q = q.Where(t => t.DueDate <= f.DueTo.Value);
         if (f.DueDate.HasValue) q = q.Where(t => t.DueDate == f.DueDate.Value);
+        if (f.CompletedFrom.HasValue) q = q.Where(t => t.CompletedOn >= f.CompletedFrom.Value);
+        if (f.CompletedTo.HasValue) q = q.Where(t => t.CompletedOn <= f.CompletedTo.Value);
         if (f.CompletedOn.HasValue) q = q.Where(t => t.CompletedOn == f.CompletedOn.Value);
 
         if (f.Overdue == true)

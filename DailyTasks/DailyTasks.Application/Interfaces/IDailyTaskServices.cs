@@ -28,6 +28,8 @@ public interface IDailyTaskService
     Task<DailyTaskChangesDto> ChangesAsync(DateTime? sinceUtc);
     Task<List<DailyTaskUserDto>> ListUsersAsync(string? area);
     Task<List<DailyTaskAreaDto>> ListAreasAsync();
+    Task<DailyTaskSettingsDto> GetSettingsAsync();
+    Task<DailyTaskSettingsDto> UpdateSettingsAsync(UpdateDailyTaskSettingsRequest request);
 }
 
 public interface IDailyTaskReportService

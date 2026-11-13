@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IDailyTaskUserRepository, DailyTaskUserRepository>();
         services.AddScoped<IDailyTaskRepository, DailyTaskRepository>();
         services.AddScoped<IDailyTaskHistoryRepository, DailyTaskHistoryRepository>();
+        services.AddScoped<IDailyTaskSettingsRepository, DailyTaskSettingsRepository>();
 
         services.AddSingleton(DailyTaskJwtOptions.FromConfiguration(cfg));
         services.AddSingleton<IDailyTaskJwtTokenService, DailyTaskJwtTokenService>();

@@ -30,6 +30,16 @@ public class DailyTasksController(IDailyTaskService service) : ControllerBase
         [FromQuery] DailyTaskQuery query) =>
         Ok(await service.CalendarAsync(from, to, query));
 
+    [HttpGet("settings")]
+    public async Task<ActionResult<DailyTaskSettingsDto>> GetSettings() =>
+        Ok(await service.GetSettingsAsync());
+
+    [HttpPut("settings")]
+    [Authorize(Policy = DailyTasksAuth.ManagerPolicy)]
+    public async Task<ActionResult<DailyTaskSettingsDto>> UpdateSettings(
+        [FromBody] UpdateDailyTaskSettingsRequest request) =>
+        Ok(await service.UpdateSettingsAsync(request));
+
     [HttpGet("changes")]
     public async Task<ActionResult<DailyTaskChangesDto>> Changes([FromQuery] DateTime? since) =>
         Ok(await service.ChangesAsync(since));

@@ -8,6 +8,7 @@ public class DailyTasksDbContext(DbContextOptions<DailyTasksDbContext> options) 
     public DbSet<DailyTaskUser> Users => Set<DailyTaskUser>();
     public DbSet<DailyTask> Tasks => Set<DailyTask>();
     public DbSet<DailyTaskHistory> TaskHistory => Set<DailyTaskHistory>();
+    public DbSet<DailyTaskSettings> Settings => Set<DailyTaskSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -63,6 +64,12 @@ public class DailyTasksDbContext(DbContextOptions<DailyTasksDbContext> options) 
 
             // Detecta ediciones concurrentes (por ejemplo, dos personas moviendo la misma tarjeta).
             e.UseXminAsConcurrencyToken();
+        });
+
+        b.Entity<DailyTaskSettings>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserDueDateWindowDays).HasDefaultValue(7);
         });
 
         b.Entity<DailyTaskHistory>(e =>
