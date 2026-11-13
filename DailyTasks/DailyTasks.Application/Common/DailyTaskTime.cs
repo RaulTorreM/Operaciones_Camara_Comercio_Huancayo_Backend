@@ -5,7 +5,10 @@ public static class DailyTaskTime
 {
     public static DateTime UtcNow => DateTime.UtcNow;
 
-    public static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-5));
+    /// <summary>Fecha y hora actual de Perú (UTC-5, sin horario de verano).</summary>
+    public static DateTime NowPeru => DateTime.UtcNow.AddHours(-5);
+
+    public static DateOnly Today => DateOnly.FromDateTime(NowPeru);
 
     public static DateOnly ToPeruDate(DateTime utc) => DateOnly.FromDateTime(utc.AddHours(-5));
 }

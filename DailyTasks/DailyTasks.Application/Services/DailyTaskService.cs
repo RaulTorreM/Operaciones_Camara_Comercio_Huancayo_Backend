@@ -82,7 +82,7 @@ public class DailyTaskService(
         if (assignee is null || !assignee.IsActive)
             throw new BusinessRuleException("El responsable indicado no existe o está inactivo.");
 
-        await EnsureUserCanCreateInWindowAsync();
+        await EnsureUserCanCreateNowAsync();
 
         var now = DailyTaskTime.UtcNow;
         var today = DailyTaskTime.Today;
@@ -445,10 +445,10 @@ public class DailyTaskService(
     {
         EnsureAuthenticated();
         var currentSettings = await settings.GetAsync();
-        var days = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 365);
         return new DailyTaskSettingsDto(
-            days,
-            currentSettings?.CreationWindowEndsOn,
+            currentSettings?.CreationStartTime ?? DailyTaskCreationSchedule.DefaultStart,
+            currentSettings?.CreationEndTime ?? DailyTaskCreationSchedule.DefaultEnd,
+            currentSettings?.AllowWeekendCreation ?? false,
             currentSettings?.UpdatedAt ?? DailyTaskTime.UtcNow);
     }
 
@@ -457,23 +457,27 @@ public class DailyTaskService(
         EnsureAuthenticated();
 
         if (!current.IsManager)
-            throw new ForbiddenException("Solo Gerencia General puede configurar la ventana de creación.");
+            throw new ForbiddenException("Solo Gerencia General puede configurar los pendientes.");
 
-        if (request.CreationWindowDays is null)
-            throw new BusinessRuleException("Indica la cantidad de días de la ventana de creación.");
-
-        var days = request.CreationWindowDays.Value;
-        if (days is < 0 or > 365)
-            throw new BusinessRuleException("La ventana de creación debe estar entre 0 y 365 días.");
-
-        var today = DailyTaskTime.Today;
         var currentSettings = await settings.GetAsync() ?? new DailyTaskSettings();
-        currentSettings.UserDueDateWindowDays = days;
-        currentSettings.CreationWindowEndsOn = today.AddDays(days);
+
+        var start = request.CreationStartTime ?? currentSettings.CreationStartTime;
+        var end = request.CreationEndTime ?? currentSettings.CreationEndTime;
+        if (start >= end)
+            throw new BusinessRuleException("La hora de inicio debe ser anterior a la hora de fin.");
+
+        currentSettings.CreationStartTime = start;
+        currentSettings.CreationEndTime = end;
+        currentSettings.AllowWeekendCreation =
+            request.AllowWeekendCreation ?? currentSettings.AllowWeekendCreation;
         currentSettings.UpdatedAt = DailyTaskTime.UtcNow;
         await settings.SaveAsync(currentSettings);
 
-        return new DailyTaskSettingsDto(days, currentSettings.CreationWindowEndsOn, currentSettings.UpdatedAt);
+        return new DailyTaskSettingsDto(
+            currentSettings.CreationStartTime,
+            currentSettings.CreationEndTime,
+            currentSettings.AllowWeekendCreation,
+            currentSettings.UpdatedAt);
     }
 
     public async Task<List<DailyTaskNotificationDto>> ListNotificationsAsync()
@@ -510,20 +514,31 @@ public class DailyTaskService(
         await notifications.MarkAllReadAsync(current.Id);
     }
 
-    private async Task EnsureUserCanCreateInWindowAsync()
+    private async Task EnsureUserCanCreateNowAsync()
     {
         if (current.IsManager) return;
 
         var currentSettings = await settings.GetAsync();
-        var endsOn = currentSettings?.CreationWindowEndsOn;
-        if (endsOn is null) return;
+        var start = currentSettings?.CreationStartTime ?? DailyTaskCreationSchedule.DefaultStart;
+        var end = currentSettings?.CreationEndTime ?? DailyTaskCreationSchedule.DefaultEnd;
+        var allowWeekend = currentSettings?.AllowWeekendCreation ?? false;
 
-        var today = DailyTaskTime.Today;
-        if (today <= endsOn.Value) return;
+        var now = DailyTaskTime.NowPeru;
+        var today = DateOnly.FromDateTime(now);
+        var time = TimeOnly.FromDateTime(now);
+
+        if (DailyTaskCreationSchedule.IsWithin(today, time, start, end, allowWeekend)) return;
+
+        if (DailyTaskCreationSchedule.IsWeekend(today) && !allowWeekend)
+        {
+            throw new BusinessRuleException(
+                "Hoy no se pueden crear pendientes porque los fines de semana están deshabilitados. " +
+                "Pide a Gerencia General que habilite sábados y domingos.");
+        }
 
         throw new BusinessRuleException(
-            $"La ventana de creación terminó el {endsOn.Value:dd/MM/yyyy}. " +
-            "Pide a Gerencia General que habilite un nuevo periodo para crear pendientes.");
+            $"Solo puedes crear pendientes de {start:HH\\:mm} a {end:HH\\:mm} (hora Perú). " +
+            "Intenta dentro de ese horario o pide a Gerencia General que lo amplíe.");
     }
 
     private int ResolveAssignee(int? requested)

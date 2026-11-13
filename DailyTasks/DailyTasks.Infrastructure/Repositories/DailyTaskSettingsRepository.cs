@@ -21,7 +21,9 @@ public class DailyTaskSettingsRepository(DailyTasksDbContext db) : IDailyTaskSet
         }
         else
         {
-            existing.UserDueDateWindowDays = settings.UserDueDateWindowDays;
+            existing.CreationStartTime = settings.CreationStartTime;
+            existing.CreationEndTime = settings.CreationEndTime;
+            existing.AllowWeekendCreation = settings.AllowWeekendCreation;
             existing.UpdatedAt = settings.UpdatedAt;
         }
 

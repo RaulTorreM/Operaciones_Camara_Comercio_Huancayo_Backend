@@ -46,11 +46,15 @@ public record ChangeDailyTaskStatusRequest(DailyTaskStatus? Status);
 public record AssignDailyTaskRequest(int? AssignedToId);
 
 public record DailyTaskSettingsDto(
-    int CreationWindowDays,
-    DateOnly? CreationWindowEndsOn,
+    TimeOnly CreationStartTime,
+    TimeOnly CreationEndTime,
+    bool AllowWeekendCreation,
     DateTime UpdatedAt);
 
-public record UpdateDailyTaskSettingsRequest(int? CreationWindowDays);
+public record UpdateDailyTaskSettingsRequest(
+    TimeOnly? CreationStartTime,
+    TimeOnly? CreationEndTime,
+    bool? AllowWeekendCreation);
 
 public record DailyTaskNotificationDto(
     int Id,

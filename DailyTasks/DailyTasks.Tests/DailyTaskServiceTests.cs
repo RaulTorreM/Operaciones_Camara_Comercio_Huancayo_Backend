@@ -27,7 +27,12 @@ public class DailyTaskServiceTests
         _notifier.Setup(n => n.NotifyAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>())).Returns(Task.CompletedTask);
-        _settings.Setup(s => s.GetAsync()).ReturnsAsync((DailyTaskSettings?)null);
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
+        {
+            CreationStartTime = TimeOnly.MinValue,
+            CreationEndTime = TimeOnly.MaxValue,
+            AllowWeekendCreation = true
+        });
         _notifications.Setup(r => r.AddAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
         _notifications.Setup(r => r.MarkReadAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
         _notifications.Setup(r => r.MarkAllReadAsync(It.IsAny<int>())).Returns(Task.CompletedTask);
@@ -73,14 +78,20 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_RegularUser_OutsideCreationWindow_Throws()
+    public async Task CreateAsync_RegularUser_OutsideSchedule_Throws()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var user = TestData.User(1);
         _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
+
+        var now = DailyTaskTime.NowPeru;
+        var start = TimeOnly.FromDateTime(now).AddHours(1);
+        var end = start.AddHours(1);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
         {
-            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(-1)
+            CreationStartTime = start,
+            CreationEndTime = end,
+            AllowWeekendCreation = true
         });
 
         var service = Build(current);
@@ -95,14 +106,16 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_RegularUser_InsideCreationWindow_AllowsAnyDueDate()
+    public async Task CreateAsync_RegularUser_InsideSchedule_AllowsAnyDueDate()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var user = TestData.User(1);
         _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
         {
-            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(2)
+            CreationStartTime = TimeOnly.MinValue,
+            CreationEndTime = TimeOnly.MaxValue,
+            AllowWeekendCreation = true
         });
 
         DailyTask? captured = null;
@@ -124,7 +137,7 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_Manager_IgnoresCreationWindow()
+    public async Task CreateAsync_Manager_IgnoresSchedule()
     {
         var current = new FakeCurrentUser
         {
@@ -136,7 +149,9 @@ public class DailyTaskServiceTests
         _users.Setup(r => r.GetByIdAsync(11)).ReturnsAsync(manager);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings
         {
-            CreationWindowEndsOn = DailyTaskTime.Today.AddDays(-30)
+            CreationStartTime = new TimeOnly(0, 0),
+            CreationEndTime = new TimeOnly(0, 0),
+            AllowWeekendCreation = false
         });
 
         DailyTask? captured = null;
@@ -158,7 +173,7 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task UpdateSettingsAsync_Manager_UpdatesCreationWindow()
+    public async Task UpdateSettingsAsync_Manager_UpdatesSchedule()
     {
         var current = new FakeCurrentUser
         {
@@ -173,13 +188,16 @@ public class DailyTaskServiceTests
 
         var service = Build(current);
 
-        var result = await service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2));
+        var result = await service.UpdateSettingsAsync(
+            new UpdateDailyTaskSettingsRequest(new TimeOnly(8, 30), new TimeOnly(19, 0), true));
 
-        Assert.Equal(2, result.CreationWindowDays);
-        Assert.Equal(DailyTaskTime.Today.AddDays(2), result.CreationWindowEndsOn);
+        Assert.Equal(new TimeOnly(8, 30), result.CreationStartTime);
+        Assert.Equal(new TimeOnly(19, 0), result.CreationEndTime);
+        Assert.True(result.AllowWeekendCreation);
         Assert.NotNull(saved);
-        Assert.Equal(2, saved!.UserDueDateWindowDays);
-        Assert.Equal(DailyTaskTime.Today.AddDays(2), saved.CreationWindowEndsOn);
+        Assert.Equal(new TimeOnly(8, 30), saved!.CreationStartTime);
+        Assert.Equal(new TimeOnly(19, 0), saved.CreationEndTime);
+        Assert.True(saved.AllowWeekendCreation);
     }
 
     [Fact]
@@ -189,7 +207,8 @@ public class DailyTaskServiceTests
         var service = Build(current);
 
         await Assert.ThrowsAsync<ForbiddenException>(() =>
-            service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2)));
+            service.UpdateSettingsAsync(
+                new UpdateDailyTaskSettingsRequest(new TimeOnly(8, 30), new TimeOnly(19, 0), false)));
     }
 
     [Fact]

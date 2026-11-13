@@ -70,7 +70,9 @@ public class DailyTasksDbContext(DbContextOptions<DailyTasksDbContext> options) 
         b.Entity<DailyTaskSettings>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.UserDueDateWindowDays).HasDefaultValue(7);
+            e.Property(x => x.CreationStartTime).HasDefaultValue(new TimeOnly(8, 30));
+            e.Property(x => x.CreationEndTime).HasDefaultValue(new TimeOnly(19, 0));
+            e.Property(x => x.AllowWeekendCreation).HasDefaultValue(false);
         });
 
         b.Entity<DailyTaskNotification>(e =>
