@@ -15,6 +15,7 @@ public class DailyTaskService(
     IDailyTaskUserRepository users,
     IDailyTaskHistoryRepository history,
     IDailyTaskSettingsRepository settings,
+    IDailyTaskNotificationRepository notifications,
     IDailyTaskUnitOfWork uow,
     IDailyTaskCurrentUser current,
     IDailyTaskNotifier notifier) : IDailyTaskService
@@ -81,10 +82,11 @@ public class DailyTaskService(
         if (assignee is null || !assignee.IsActive)
             throw new BusinessRuleException("El responsable indicado no existe o está inactivo.");
 
+        await EnsureUserCanCreatePendingAsync();
+
         var now = DailyTaskTime.UtcNow;
         var today = DailyTaskTime.Today;
         var dueDate = request.DueDate ?? today;
-        await EnsureUserDueDateAllowedAsync(dueDate);
 
         var task = new DailyTask
         {
@@ -109,6 +111,18 @@ public class DailyTaskService(
         await tasks.AddAsync(task);
         await uow.SaveChangesAsync();
 
+        if (current.IsManager && assignee.Id != creator.Id)
+        {
+            await notifications.AddAsync(new DailyTaskNotification
+            {
+                UserId = assignee.Id,
+                TaskId = task.Id,
+                TaskTitle = task.Title,
+                Message = $"Gerencia General te asignó “{task.Title}”. Vence el {task.DueDate:dd/MM/yyyy}.",
+                CreatedAt = now
+            });
+        }
+
         var dto = task.ToDto();
         await notifier.NotifyAsync("taskCreated", dto);
         return dto;
@@ -127,8 +141,6 @@ public class DailyTaskService(
 
         var priority = request.Priority ?? task.Priority;
         var dueDate = request.DueDate ?? task.DueDate;
-        if (request.DueDate.HasValue && request.DueDate.Value != task.DueDate)
-            await EnsureUserDueDateAllowedAsync(dueDate);
         var now = DailyTaskTime.UtcNow;
         var group = Guid.NewGuid();
         var changes = new List<DailyTaskHistory>();
@@ -229,6 +241,18 @@ public class DailyTaskService(
             "ASSIGNED", "AssignedTo", oldName, assignee.FullName, now, Guid.NewGuid()));
 
         await uow.SaveChangesAsync();
+
+        if (assignee.Id != current.Id)
+        {
+            await notifications.AddAsync(new DailyTaskNotification
+            {
+                UserId = assignee.Id,
+                TaskId = task.Id,
+                TaskTitle = task.Title,
+                Message = $"Gerencia General te asignó “{task.Title}”. Vence el {task.DueDate:dd/MM/yyyy}.",
+                CreatedAt = now
+            });
+        }
 
         var dto = task.ToDto();
         await notifier.NotifyAsync("taskAssigned", dto);
@@ -421,9 +445,9 @@ public class DailyTaskService(
     {
         EnsureAuthenticated();
         var currentSettings = await settings.GetAsync();
-        var window = currentSettings?.UserDueDateWindowDays ?? 7;
+        var limit = currentSettings?.UserDueDateWindowDays ?? 7;
         return new DailyTaskSettingsDto(
-            Math.Clamp(window, 0, 365),
+            Math.Clamp(limit, 0, 999),
             currentSettings?.UpdatedAt ?? DailyTaskTime.UtcNow);
     }
 
@@ -432,37 +456,70 @@ public class DailyTaskService(
         EnsureAuthenticated();
 
         if (!current.IsManager)
-            throw new ForbiddenException("Solo Gerencia General puede configurar el límite de días.");
+            throw new ForbiddenException("Solo Gerencia General puede configurar el límite de pendientes.");
 
-        if (request.UserDueDateWindowDays is null)
-            throw new BusinessRuleException("Indica la cantidad de días permitidos.");
+        if (request.UserPendingLimit is null)
+            throw new BusinessRuleException("Indica la cantidad de pendientes permitidos.");
 
-        var days = request.UserDueDateWindowDays.Value;
-        if (days is < 0 or > 365)
-            throw new BusinessRuleException("El límite de días debe estar entre 0 y 365.");
+        var limit = request.UserPendingLimit.Value;
+        if (limit is < 0 or > 999)
+            throw new BusinessRuleException("El límite de pendientes debe estar entre 0 y 999.");
 
         var currentSettings = await settings.GetAsync() ?? new DailyTaskSettings();
-        currentSettings.UserDueDateWindowDays = days;
+        currentSettings.UserDueDateWindowDays = limit;
         currentSettings.UpdatedAt = DailyTaskTime.UtcNow;
         await settings.SaveAsync(currentSettings);
 
-        return new DailyTaskSettingsDto(days, currentSettings.UpdatedAt);
+        return new DailyTaskSettingsDto(limit, currentSettings.UpdatedAt);
     }
 
-    private async Task EnsureUserDueDateAllowedAsync(DateOnly dueDate)
+    public async Task<List<DailyTaskNotificationDto>> ListNotificationsAsync()
+    {
+        EnsureAuthenticated();
+        var items = await notifications.ListForUserAsync(current.Id);
+        return items
+            .Select(n => new DailyTaskNotificationDto(
+                n.Id,
+                n.TaskId,
+                n.TaskTitle,
+                n.Message,
+                n.CreatedAt,
+                n.ReadAt))
+            .ToList();
+    }
+
+    public async Task MarkNotificationReadAsync(int id)
+    {
+        EnsureAuthenticated();
+        var notification = await notifications.GetForUserAsync(id, current.Id)
+            ?? throw new NotFoundException("No se encontró la notificación.");
+
+        if (notification.ReadAt is null)
+        {
+            notification.ReadAt = DailyTaskTime.UtcNow;
+            await notifications.MarkReadAsync(notification);
+        }
+    }
+
+    public async Task MarkAllNotificationsReadAsync()
+    {
+        EnsureAuthenticated();
+        await notifications.MarkAllReadAsync(current.Id);
+    }
+
+    private async Task EnsureUserCanCreatePendingAsync()
     {
         if (current.IsManager) return;
 
         var currentSettings = await settings.GetAsync();
-        var days = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 365);
-        var today = DailyTaskTime.Today;
-        var maxDate = today.AddDays(days);
+        var limit = Math.Clamp(currentSettings?.UserDueDateWindowDays ?? 7, 0, 999);
+        var active = await tasks.CountActiveByAssigneeAsync(current.Id);
 
-        if (dueDate < today || dueDate > maxDate)
+        if (active >= limit)
         {
             throw new BusinessRuleException(
-                $"Tu vencimiento debe estar entre hoy y el {maxDate:dd/MM/yyyy} ({days} días). " +
-                "Pide a Gerencia General que amplíe el límite si necesitas otra fecha.");
+                $"Has alcanzado el límite de {limit} pendientes activos. " +
+                "Completa o elimina uno antes de crear otro.");
         }
     }
 

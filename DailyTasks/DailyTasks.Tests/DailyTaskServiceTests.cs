@@ -17,6 +17,7 @@ public class DailyTaskServiceTests
     private readonly Mock<IDailyTaskUserRepository> _users = new();
     private readonly Mock<IDailyTaskHistoryRepository> _history = new();
     private readonly Mock<IDailyTaskSettingsRepository> _settings = new();
+    private readonly Mock<IDailyTaskNotificationRepository> _notifications = new();
     private readonly Mock<IDailyTaskUnitOfWork> _uow = new();
     private readonly Mock<IDailyTaskNotifier> _notifier = new();
 
@@ -26,11 +27,23 @@ public class DailyTaskServiceTests
         _notifier.Setup(n => n.NotifyAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>())).Returns(Task.CompletedTask);
+        _tasks.Setup(r => r.CountActiveByAssigneeAsync(It.IsAny<int>())).ReturnsAsync(0);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync((DailyTaskSettings?)null);
+        _notifications.Setup(r => r.AddAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
+        _notifications.Setup(r => r.MarkReadAsync(It.IsAny<DailyTaskNotification>())).Returns(Task.CompletedTask);
+        _notifications.Setup(r => r.MarkAllReadAsync(It.IsAny<int>())).Returns(Task.CompletedTask);
     }
 
     private DailyTaskService Build(FakeCurrentUser current) =>
-        new(_tasks.Object, _users.Object, _history.Object, _settings.Object, _uow.Object, current, _notifier.Object);
+        new(
+            _tasks.Object,
+            _users.Object,
+            _history.Object,
+            _settings.Object,
+            _notifications.Object,
+            _uow.Object,
+            current,
+            _notifier.Object);
 
     [Fact]
     public async Task CreateAsync_RegularUser_ForcesSelfAndDefaults()
@@ -61,12 +74,13 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_RegularUser_OutsideDueWindow_Throws()
+    public async Task CreateAsync_RegularUser_AtPendingLimit_Throws()
     {
         var current = new FakeCurrentUser { Id = 1, Role = DailyTaskRoles.User };
         var user = TestData.User(1);
         _users.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(user);
         _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 2 });
+        _tasks.Setup(r => r.CountActiveByAssigneeAsync(1)).ReturnsAsync(2);
 
         var service = Build(current);
 
@@ -75,12 +89,12 @@ public class DailyTaskServiceTests
                 "Tarea",
                 null,
                 null,
-                DailyTaskTime.Today.AddDays(3),
+                DailyTaskTime.Today.AddDays(30),
                 null)));
     }
 
     [Fact]
-    public async Task CreateAsync_Manager_IgnoresDueWindow()
+    public async Task CreateAsync_Manager_IgnoresPendingLimit()
     {
         var current = new FakeCurrentUser
         {
@@ -90,7 +104,8 @@ public class DailyTaskServiceTests
         };
         var manager = TestData.User(11, role: DailyTaskRoles.Manager, area: DailyTaskAreas.GerenciaGeneral);
         _users.Setup(r => r.GetByIdAsync(11)).ReturnsAsync(manager);
-        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 2 });
+        _settings.Setup(s => s.GetAsync()).ReturnsAsync(new DailyTaskSettings { UserDueDateWindowDays = 0 });
+        _tasks.Setup(r => r.CountActiveByAssigneeAsync(11)).ReturnsAsync(999);
 
         DailyTask? captured = null;
         _tasks.Setup(r => r.AddAsync(It.IsAny<DailyTask>()))
@@ -111,7 +126,7 @@ public class DailyTaskServiceTests
     }
 
     [Fact]
-    public async Task UpdateSettingsAsync_Manager_UpdatesWindow()
+    public async Task UpdateSettingsAsync_Manager_UpdatesPendingLimit()
     {
         var current = new FakeCurrentUser
         {
@@ -128,7 +143,7 @@ public class DailyTaskServiceTests
 
         var result = await service.UpdateSettingsAsync(new UpdateDailyTaskSettingsRequest(2));
 
-        Assert.Equal(2, result.UserDueDateWindowDays);
+        Assert.Equal(2, result.UserPendingLimit);
         Assert.NotNull(saved);
         Assert.Equal(2, saved!.UserDueDateWindowDays);
     }
@@ -270,6 +285,11 @@ public class DailyTaskServiceTests
         _tasks.Setup(r => r.GetByIdAsync(5, false)).ReturnsAsync(task);
         _users.Setup(r => r.GetByIdAsync(2)).ReturnsAsync(other);
 
+        DailyTaskNotification? notification = null;
+        _notifications.Setup(r => r.AddAsync(It.IsAny<DailyTaskNotification>()))
+            .Callback<DailyTaskNotification>(n => notification = n)
+            .Returns(Task.CompletedTask);
+
         var service = Build(current);
 
         await service.AssignAsync(5, new AssignDailyTaskRequest(2));
@@ -278,6 +298,9 @@ public class DailyTaskServiceTests
         Assert.Equal(DailyTaskAreas.Tesoreria, task.Area);
         Assert.Single(task.History);
         Assert.Equal("ASSIGNED", task.History[0].Action);
+        Assert.NotNull(notification);
+        Assert.Equal(2, notification!.UserId);
+        Assert.Equal(5, notification.TaskId);
     }
 
     [Fact]

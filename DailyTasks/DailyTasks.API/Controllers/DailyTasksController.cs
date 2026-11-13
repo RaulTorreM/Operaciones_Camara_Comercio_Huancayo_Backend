@@ -40,6 +40,24 @@ public class DailyTasksController(IDailyTaskService service) : ControllerBase
         [FromBody] UpdateDailyTaskSettingsRequest request) =>
         Ok(await service.UpdateSettingsAsync(request));
 
+    [HttpGet("notifications")]
+    public async Task<ActionResult<List<DailyTaskNotificationDto>>> Notifications() =>
+        Ok(await service.ListNotificationsAsync());
+
+    [HttpPost("notifications/{id:int}/read")]
+    public async Task<IActionResult> MarkNotificationRead(int id)
+    {
+        await service.MarkNotificationReadAsync(id);
+        return NoContent();
+    }
+
+    [HttpPost("notifications/read-all")]
+    public async Task<IActionResult> MarkAllNotificationsRead()
+    {
+        await service.MarkAllNotificationsReadAsync();
+        return NoContent();
+    }
+
     [HttpGet("changes")]
     public async Task<ActionResult<DailyTaskChangesDto>> Changes([FromQuery] DateTime? since) =>
         Ok(await service.ChangesAsync(since));

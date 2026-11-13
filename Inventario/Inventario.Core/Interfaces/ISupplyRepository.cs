@@ -11,4 +11,5 @@ public interface ISupplyRepository
     Task<List<SupplyMovement>> GetMovementsAsync(int supplyId, int take);
     Task<int> CountLowAsync();
     Task AddAsync(Supply supply);
+    void Remove(Supply supply);
 }

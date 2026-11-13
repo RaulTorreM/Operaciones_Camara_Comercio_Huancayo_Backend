@@ -30,4 +30,6 @@ public class SupplyRepository(InventarioDbContext db) : ISupplyRepository
             (s.Mode == SupplyMode.Visual && s.Level <= 1));
 
     public async Task AddAsync(Supply supply) => await db.Supplies.AddAsync(supply);
+
+    public void Remove(Supply supply) => db.Supplies.Remove(supply);
 }

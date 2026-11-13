@@ -37,6 +37,8 @@ public interface ISupplyService
 {
     Task<List<SupplyDto>> ListAsync();
     Task<SupplyDto> CreateAsync(SupplyRequest request);
+    Task<SupplyDto> UpdateAsync(int id, SupplyRequest request);
+    Task DeleteAsync(int id);
     Task<SupplyDto> RegisterMovementAsync(int id, MovementRequest request);
     Task<SupplyDto> SetLevelAsync(int id, LevelRequest request);
     Task<List<SupplyMovementDto>> GetMovementsAsync(int id);

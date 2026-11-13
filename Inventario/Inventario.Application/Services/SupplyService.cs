@@ -46,6 +46,58 @@ public class SupplyService(ISupplyRepository supplies, IUnitOfWork uow, ICurrent
         return supply.ToDto();
     }
 
+    public async Task<SupplyDto> UpdateAsync(int id, SupplyRequest r)
+    {
+        Validation.CheckEnum(r.Mode, "Modo de consumible no válido.");
+
+        var supply = await supplies.GetByIdAsync(id)
+            ?? throw new NotFoundException("No se encontró el consumible.");
+
+        var name = PeruTime.Clean(r.Name) ?? throw new BusinessRuleException("El nombre es obligatorio.");
+        Validation.MaxLength(name, MaxNameLength, "El nombre no debe superar 200 caracteres.");
+
+        var wasVisual = supply.Mode == SupplyMode.Visual;
+        var visual = (r.Mode ?? supply.Mode) == SupplyMode.Visual;
+
+        if (!visual && r.Stock is < 0)
+            throw new BusinessRuleException("El stock no puede ser negativo.");
+        if (!visual && r.MinStock is < 0)
+            throw new BusinessRuleException("El stock mínimo no puede ser negativo.");
+        if (r.Level is < 0 or > 3)
+            throw new BusinessRuleException("El nivel debe estar entre 0 y 3.");
+
+        var unit = PeruTime.Clean(r.Unit);
+
+        supply.Name = name;
+        supply.Mode = visual ? SupplyMode.Visual : SupplyMode.Quantity;
+        supply.Unit = visual ? "" : string.IsNullOrWhiteSpace(unit) ? "unid." : unit;
+        supply.MinStock = visual ? 0 : r.MinStock ?? supply.MinStock;
+        supply.Level = visual ? r.Level ?? supply.Level : 3;
+
+        if (visual)
+        {
+            supply.Stock = 0;
+        }
+        else if (wasVisual)
+        {
+            // Al pasar de nivel visual a cantidad se define el stock inicial.
+            supply.Stock = r.Stock ?? 0;
+        }
+        // Si ya se controlaba por cantidad, el stock solo cambia con movimientos (Entrada, Salida o Conteo).
+
+        await uow.SaveChangesAsync();
+        return supply.ToDto();
+    }
+
+    public async Task DeleteAsync(int id)
+    {
+        var supply = await supplies.GetByIdAsync(id)
+            ?? throw new NotFoundException("No se encontró el consumible.");
+
+        supplies.Remove(supply);
+        await uow.SaveChangesAsync();
+    }
+
     public async Task<SupplyDto> RegisterMovementAsync(int id, MovementRequest r)
     {
         Validation.CheckEnum(r.Type, "Tipo de movimiento no válido.");

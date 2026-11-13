@@ -24,6 +24,17 @@ public class SuppliesController(ISupplyService service) : ControllerBase
     public async Task<ActionResult<SupplyDto>> Create([FromBody] SupplyRequest request) =>
         Ok(await service.CreateAsync(request));
 
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<SupplyDto>> Update(int id, [FromBody] SupplyRequest request) =>
+        Ok(await service.UpdateAsync(id, request));
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await service.DeleteAsync(id);
+        return NoContent();
+    }
+
     [HttpPost("{id:int}/movements")]
     public async Task<ActionResult<SupplyDto>> RegisterMovement(int id, [FromBody] MovementRequest request) =>
         Ok(await service.RegisterMovementAsync(id, request));

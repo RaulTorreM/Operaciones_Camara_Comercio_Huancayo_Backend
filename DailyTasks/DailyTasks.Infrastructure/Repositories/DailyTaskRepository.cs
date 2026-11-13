@@ -25,6 +25,12 @@ public class DailyTaskRepository(DailyTasksDbContext db) : IDailyTaskRepository
     public Task<int> CountAsync(Core.Models.DailyTaskFilter filter, bool includeDeleted) =>
         ApplyFilter(BaseQuery(includeDeleted), filter).CountAsync();
 
+    public Task<int> CountActiveByAssigneeAsync(int assignedToId) =>
+        db.Tasks.CountAsync(t =>
+            t.AssignedToId == assignedToId
+            && t.DeletedAt == null
+            && t.Status != Core.Enums.DailyTaskStatus.Done);
+
     public async Task<List<DailyTask>> ListAllAsync(Core.Models.DailyTaskFilter filter, bool includeDeleted = false)
     {
         var query = ApplyFilter(Query(includeDeleted).AsNoTracking(), filter);

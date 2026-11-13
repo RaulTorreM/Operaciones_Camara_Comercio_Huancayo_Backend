@@ -353,4 +353,122 @@ public class SupplyServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() =>
             service.SetLevelAsync(1, new LevelRequest(2)));
     }
+
+    [Fact]
+    public async Task UpdateAsync_Quantity_UpdatesFieldsAndKeepsStock()
+    {
+        var supply = QuantitySupply(stock: 10, minStock: 2);
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(supply);
+        var uow = TestHelpers.UnitOfWork();
+        var service = new SupplyService(supplies.Object, uow.Object, new FakeUser());
+
+        var dto = await service.UpdateAsync(
+            1, new SupplyRequest("  Hojas A4  ", "cajas", SupplyMode.Quantity, 999, 4, null));
+
+        Assert.Equal("Hojas A4", supply.Name);
+        Assert.Equal("cajas", supply.Unit);
+        Assert.Equal(SupplyMode.Quantity, supply.Mode);
+        Assert.Equal(10, supply.Stock);
+        Assert.Equal(4, supply.MinStock);
+        Assert.Equal(3, supply.Level);
+        Assert.Equal(10, dto.Stock);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ToVisual_ForcesZeroStockAndMinStock()
+    {
+        var supply = QuantitySupply(stock: 10, minStock: 2);
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(supply);
+        var service = new SupplyService(
+            supplies.Object, TestHelpers.UnitOfWork().Object, new FakeUser());
+
+        await service.UpdateAsync(
+            1, new SupplyRequest("Papel higiénico", "cajas", SupplyMode.Visual, 8, 3, 1));
+
+        Assert.Equal(SupplyMode.Visual, supply.Mode);
+        Assert.Equal("", supply.Unit);
+        Assert.Equal(0, supply.Stock);
+        Assert.Equal(0, supply.MinStock);
+        Assert.Equal(1, supply.Level);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_VisualToQuantity_SetsInitialStock()
+    {
+        var supply = new Supply
+        {
+            Id = 1, Name = "Papel", Mode = SupplyMode.Visual, Level = 2
+        };
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(supply);
+        var service = new SupplyService(
+            supplies.Object, TestHelpers.UnitOfWork().Object, new FakeUser());
+
+        await service.UpdateAsync(
+            1, new SupplyRequest("Papel", "unid.", SupplyMode.Quantity, 8, 2, null));
+
+        Assert.Equal(SupplyMode.Quantity, supply.Mode);
+        Assert.Equal("unid.", supply.Unit);
+        Assert.Equal(8, supply.Stock);
+        Assert.Equal(2, supply.MinStock);
+        Assert.Equal(3, supply.Level);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EmptyName_Throws()
+    {
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(QuantitySupply());
+        var uow = TestHelpers.UnitOfWork();
+        var service = new SupplyService(supplies.Object, uow.Object, new FakeUser());
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.UpdateAsync(1, new SupplyRequest("   ", "unid.", SupplyMode.Quantity, 10, 2, null)));
+
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_SupplyNotFound_Throws()
+    {
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync((Supply?)null);
+        var service = new SupplyService(
+            supplies.Object, TestHelpers.UnitOfWork().Object, new FakeUser());
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.UpdateAsync(1, new SupplyRequest("Papel", "unid.", SupplyMode.Quantity, 0, 0, null)));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesSupplyAndSaves()
+    {
+        var supply = QuantitySupply();
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(supply);
+        var uow = TestHelpers.UnitOfWork();
+        var service = new SupplyService(supplies.Object, uow.Object, new FakeUser());
+
+        await service.DeleteAsync(1);
+
+        supplies.Verify(x => x.Remove(supply), Times.Once);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_SupplyNotFound_Throws()
+    {
+        var supplies = TestHelpers.SupplyRepository();
+        supplies.Setup(x => x.GetByIdAsync(1)).ReturnsAsync((Supply?)null);
+        var uow = TestHelpers.UnitOfWork();
+        var service = new SupplyService(supplies.Object, uow.Object, new FakeUser());
+
+        await Assert.ThrowsAsync<NotFoundException>(() => service.DeleteAsync(1));
+
+        supplies.Verify(x => x.Remove(It.IsAny<Supply>()), Times.Never);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

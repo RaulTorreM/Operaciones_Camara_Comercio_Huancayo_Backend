@@ -9,6 +9,7 @@ public class DailyTasksDbContext(DbContextOptions<DailyTasksDbContext> options) 
     public DbSet<DailyTask> Tasks => Set<DailyTask>();
     public DbSet<DailyTaskHistory> TaskHistory => Set<DailyTaskHistory>();
     public DbSet<DailyTaskSettings> Settings => Set<DailyTaskSettings>();
+    public DbSet<DailyTaskNotification> Notifications => Set<DailyTaskNotification>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -70,6 +71,13 @@ public class DailyTasksDbContext(DbContextOptions<DailyTasksDbContext> options) 
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.UserDueDateWindowDays).HasDefaultValue(7);
+        });
+
+        b.Entity<DailyTaskNotification>(e =>
+        {
+            e.Property(x => x.TaskTitle).HasMaxLength(200);
+            e.Property(x => x.Message).HasMaxLength(500);
+            e.HasIndex(x => new { x.UserId, x.ReadAt, x.CreatedAt });
         });
 
         b.Entity<DailyTaskHistory>(e =>

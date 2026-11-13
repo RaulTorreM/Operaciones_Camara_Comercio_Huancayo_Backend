@@ -30,6 +30,9 @@ public interface IDailyTaskService
     Task<List<DailyTaskAreaDto>> ListAreasAsync();
     Task<DailyTaskSettingsDto> GetSettingsAsync();
     Task<DailyTaskSettingsDto> UpdateSettingsAsync(UpdateDailyTaskSettingsRequest request);
+    Task<List<DailyTaskNotificationDto>> ListNotificationsAsync();
+    Task MarkNotificationReadAsync(int id);
+    Task MarkAllNotificationsReadAsync();
 }
 
 public interface IDailyTaskReportService
